@@ -21,7 +21,7 @@ scp -r ./* user@your-vps:/opt/openclaw/
 ssh user@your-vps
 cd /opt/openclaw
 
-# 3. Run the setup script
+# 3. Run the setup script — creates directories, openclaw.json config, .env, and pulls the image
 chmod +x setup.sh
 ./setup.sh
 
@@ -73,6 +73,54 @@ curl http://127.0.0.1:18789/healthz
 
 Open **https://openclaw.k-ai.in** in your browser to access the web UI.
 
+## Connecting to the Web UI (First Login)
+
+When you open the web UI for the first time, you'll see a **Gateway Dashboard** login screen asking for a Gateway Token. Follow these steps:
+
+### Step 1 — Get the tokenized dashboard URL
+
+```bash
+docker exec openclaw-gateway node openclaw.mjs dashboard
+```
+
+This outputs something like:
+```
+Dashboard URL: http://127.0.0.1:18789/#token=c1d29096c0...
+```
+
+### Step 2 — Open it via your domain
+
+Replace `http://127.0.0.1:18789/` with your domain and open it directly in your browser:
+```
+https://openclaw.k-ai.in/#token=c1d29096c0...
+```
+
+This is the recommended way — the token is embedded in the URL and the browser connects automatically.
+
+### Step 3 — Approve the device pairing (one-time, per browser)
+
+Even with the correct token, OpenClaw requires a one-time **device approval** for each new browser session. This is a security feature. After clicking Connect you'll see "pairing required". Approve it via:
+
+```bash
+# See the device list (your pending browser session will appear here)
+docker exec openclaw-gateway node openclaw.mjs devices list
+
+# Approve the pending request — no request ID needed, it approves whatever is pending
+docker exec openclaw-gateway node openclaw.mjs devices approve
+```
+
+Then click **Connect** again in the browser — you should be logged in.
+
+> **Note:** Leave the **Password** field empty unless you have explicitly configured
+> a gateway password. Entering anything in that field with no password set will cause
+> the connection to fail.
+
+Pairing is remembered per browser profile — you won't need to repeat this unless you clear browser storage or connect from a new device/browser.
+
+> **Important:** Do NOT run `openclaw gateway run` inside the container — the gateway
+> is already running as the container's main process. Running it again will fail
+> because the gateway is already active.
+
 ## File Overview
 
 | File | Purpose |
@@ -82,8 +130,22 @@ Open **https://openclaw.k-ai.in** in your browser to access the web UI.
 | `.env` | Your actual config (not committed, chmod 600) |
 | `setup.sh` | First-time setup helper |
 | `nginx-openclaw.conf` | Nginx reverse proxy config |
-| `openclaw-config/` | Persistent config data (bind mount) |
-| `openclaw-workspace/` | Workspace data (bind mount) |
+| `openclaw-config/openclaw.json` | OpenClaw gateway configuration (JSON5) |
+| `openclaw-config/` | Persistent config & state (bind mount → `/home/node/.openclaw`) |
+| `openclaw-workspace/` | Workspace data (bind mount → `/home/node/.openclaw/workspace`) |
+
+### About `openclaw.json`
+
+OpenClaw reads its configuration from `~/.openclaw/openclaw.json` (JSON5 format — comments allowed). This maps to `./openclaw-config/openclaw.json` on the host via the volume mount.
+
+> **Critical:** The file **must** be named `openclaw.json`. Any other name (e.g. `config.yaml`, `config.json`) is silently ignored. There are no environment variables for nested config keys like `controlUi.allowedOrigins` — the JSON file is the only way to set them.
+
+Key settings in `openclaw.json`:
+
+| Key | Value | Why |
+|-----|-------|-----|
+| `gateway.bind` | `"lan"` | Listens on `0.0.0.0` inside container so Docker port publishing works |
+| `gateway.controlUi.allowedOrigins` | `["https://openclaw.k-ai.in"]` | Required when `bind=lan`; CSRF protection for the Control UI |
 
 ## Common Commands
 
@@ -95,6 +157,9 @@ docker compose restart openclaw-gateway
 
 # View logs (follow mode)
 docker compose logs -f openclaw-gateway
+
+# Get a tokenized dashboard URL (for web UI login)
+docker exec openclaw-gateway node openclaw.mjs dashboard
 
 # Run CLI commands (on-demand, auto-removes when done)
 docker compose --profile cli run --rm openclaw-cli openclaw doctor
@@ -156,6 +221,7 @@ This deployment includes the following hardening:
 - **All capabilities dropped** — `cap_drop: ALL`
 - **No privilege escalation** — `no-new-privileges: true`
 - **Localhost-only ports** — bound to `127.0.0.1`; Nginx handles external access with TLS
+- **Explicit CORS allowlist** — Control UI only accepts connections from `openclaw.k-ai.in`
 - **No Docker socket** — sandbox mode is disabled to prevent container escape risks
 - **Log rotation** — capped at 30MB per service to protect the 20GB disk
 - **Resource limits** — gateway capped at 16GB RAM / 2 CPUs; prevents resource exhaustion
@@ -180,19 +246,45 @@ Total VPS: 3 OCPU / 24 GB RAM / 20 GB disk (Oracle Cloud ARM64 free tier).
 
 ## Troubleshooting
 
+**Web UI shows "pairing required"**
+This is normal — OpenClaw requires one-time device approval for each new browser session.
+Use `devices` (not `pairing list`):
+```bash
+docker exec openclaw-gateway node openclaw.mjs devices list   # view pending session
+docker exec openclaw-gateway node openclaw.mjs devices approve # approve it (no ID needed)
+```
+Then click Connect again. Also ensure the **Password** field is empty — entering anything
+there without a configured gateway password will cause connection failure. Pairing is
+remembered per browser permanently.
+
+**Web UI shows "unauthorized: gateway token missing"**
+The gateway auto-generates a token on first startup. Retrieve it with:
+```bash
+docker exec openclaw-gateway node openclaw.mjs dashboard
+```
+Copy the `?token=...` value from the output URL and paste it into the Gateway Token field.
+
+**"Gateway start blocked: set gateway.mode=local or pass --allow-unconfigured"**
+This happens if you run `openclaw gateway run` *inside* the container. Don't do this —
+the gateway is already running as the container's main process. Use `docker compose logs`
+to view its output, or `docker exec -it openclaw-gateway bash` to get a shell.
+
 **502 Bad Gateway / `curl: (56) Recv failure: Connection reset by peer`**
-The OpenClaw gateway defaults to `loopback` bind mode — it only listens on
-`127.0.0.1` *inside the container*. Docker's port publishing forwards traffic via
-the container's `eth0` adapter, which the gateway won't accept in loopback mode.
-The health check still shows `(healthy)` because it runs *inside* the container
-where `localhost:18789` is reachable. Fix: pass `--bind lan` in the gateway
-command (or set `OPENCLAW_GATEWAY_BIND=lan` in `.env`) so it listens on
-`0.0.0.0` inside the container. This is already configured in `docker-compose.yml`.
-Note: `--bind` only accepts named modes (`loopback`, `lan`, `tailnet`, `auto`,
-`custom`) — raw IPs like `0.0.0.0` are rejected.
+The OpenClaw gateway defaults to `loopback` bind mode, only listening on `127.0.0.1`
+inside the container. Fix: set `gateway.bind: "lan"` in `openclaw-config/openclaw.json`.
+This is already configured by `setup.sh`. Note: `--bind` only accepts named modes
+(`loopback`, `lan`, `tailnet`, `auto`, `custom`) — raw IPs like `0.0.0.0` are rejected.
+
+**"non-loopback Control UI requires gateway.controlUi.allowedOrigins"**
+This error appears when `gateway.bind` is `lan` but `controlUi.allowedOrigins` is not set.
+Fix: ensure `openclaw-config/openclaw.json` exists with the correct content (created by
+`setup.sh`). The file **must** be named `openclaw.json` — not `config.yaml` or anything
+else. There are no env vars for these nested config keys.
 
 **certbot fails with "cannot load certificate" error**
-This happens when you copy an nginx config that already has `ssl_certificate` lines before the cert exists. The included `nginx-openclaw.conf` is HTTP-only on purpose — never pre-add SSL paths. Deploy the HTTP config first, then run `certbot --nginx` and it will add the HTTPS block automatically.
+This happens when you copy an nginx config that already has `ssl_certificate` lines before
+the cert exists. The included `nginx-openclaw.conf` is HTTP-only on purpose — deploy it
+first, then run `certbot --nginx` and it will add the HTTPS block automatically.
 
 **nginx -t fails after copying config**
 ```bash
@@ -201,13 +293,6 @@ sudo nginx -T 2>&1 | grep -i error
 
 # Validate the specific file
 sudo nginx -c /etc/nginx/nginx.conf -t
-```
-
-**Container won't start (read-only filesystem error)**
-Some Node.js operations may need additional writable paths. Add a tmpfs mount:
-```yaml
-tmpfs:
-  - /path/that/needs/writing:size=64M
 ```
 
 **Health check failing**

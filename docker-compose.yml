@@ -1,0 +1,139 @@
+###############################################################################
+# OpenClaw Docker Compose — Oracle Cloud ARM64 Free Tier
+# Domain: openclaw.k-ai.in | Reverse proxy: Nginx (external)
+# Shared network with n8n for integration
+###############################################################################
+
+services:
+  # ---------------------------------------------------------------------------
+  # Gateway — the always-on WebSocket control plane
+  # ---------------------------------------------------------------------------
+  openclaw-gateway:
+    image: ${OPENCLAW_IMAGE:-ghcr.io/openclaw/openclaw:latest}
+    container_name: openclaw-gateway
+    user: "1000:1000"
+    command: ["node", "openclaw.mjs", "gateway", "--allow-unconfigured"]
+    restart: unless-stopped
+
+    env_file: .env
+
+    # Bind to localhost ONLY — Nginx handles external TLS termination.
+    # Docker bypasses iptables when binding to 0.0.0.0, so this is critical.
+    ports:
+      - "127.0.0.1:18789:18789"
+      - "127.0.0.1:18790:18790"
+
+    volumes:
+      - ./openclaw-config:/home/node/.openclaw
+      - ./openclaw-workspace:/home/node/.openclaw/workspace
+
+    # Harden the filesystem
+    read_only: true
+    tmpfs:
+      - /tmp:size=512M
+      - /home/node/.npm:size=128M
+
+    # Security: drop everything, prevent privilege escalation
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+    networks:
+      - openclaw-net
+      - n8n-net          # shared network for n8n <-> OpenClaw communication
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:18789/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
+
+    # Resource limits — tuned for Oracle ARM64 free tier (3 OCPU / 24 GB)
+    deploy:
+      resources:
+        limits:
+          memory: 16G
+          cpus: "2.0"
+        reservations:
+          memory: 4G
+          cpus: "0.5"
+
+    # Prevent log files from eating the 20 GB disk
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ---------------------------------------------------------------------------
+  # CLI — on-demand interactive tool (only starts when explicitly invoked)
+  # Usage: docker compose --profile cli run --rm openclaw-cli <command>
+  # ---------------------------------------------------------------------------
+  openclaw-cli:
+    image: ${OPENCLAW_IMAGE:-ghcr.io/openclaw/openclaw:latest}
+    container_name: openclaw-cli
+    user: "1000:1000"
+
+    env_file: .env
+
+    # Share the gateway's network namespace so localhost:18789 resolves
+    network_mode: "service:openclaw-gateway"
+
+    profiles:
+      - cli
+
+    stdin_open: true
+    tty: true
+
+    volumes:
+      - ./openclaw-config:/home/node/.openclaw
+      - ./openclaw-workspace:/home/node/.openclaw/workspace
+
+    read_only: true
+    tmpfs:
+      - /tmp:size=256M
+      - /home/node/.npm:size=64M
+
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+    depends_on:
+      openclaw-gateway:
+        condition: service_healthy
+
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+          cpus: "1.0"
+        reservations:
+          memory: 1G
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+# =============================================================================
+# Networks
+# =============================================================================
+networks:
+  # Internal bridge for OpenClaw services
+  openclaw-net:
+    driver: bridge
+
+  # Pre-existing n8n network — allows container-to-container communication
+  # between n8n workflows and the OpenClaw gateway.
+  n8n-net:
+    external: true

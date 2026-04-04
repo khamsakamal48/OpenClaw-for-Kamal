@@ -14,6 +14,7 @@ services:
     user: "1000:1000"
     # bind: lan and controlUi.allowedOrigins are set in openclaw.json (config file).
     # The config file is mounted via the openclaw-config volume.
+    entrypoint: ["/bin/bash", "/scripts/brew-init.sh"]
     command: ["node", "openclaw.mjs", "gateway", "--allow-unconfigured"]
     restart: unless-stopped
 
@@ -28,6 +29,8 @@ services:
     volumes:
       - ./openclaw-config:/home/node/.openclaw
       - ./openclaw-workspace:/home/node/.openclaw/workspace
+      - openclaw-homebrew:/home/node/.linuxbrew
+      - ./brew-init.sh:/scripts/brew-init.sh:ro
 
     # NOTE: read_only: true is intentionally omitted. Node.js and the openclaw
     # entrypoint need writable access to several paths (/home/node, /tmp, npm
@@ -86,6 +89,7 @@ services:
     image: ${OPENCLAW_IMAGE:-ghcr.io/openclaw/openclaw:latest}
     container_name: openclaw-cli
     user: "1000:1000"
+    entrypoint: ["/bin/bash", "/scripts/brew-init.sh"]
 
     env_file: .env
 
@@ -101,6 +105,8 @@ services:
     volumes:
       - ./openclaw-config:/home/node/.openclaw
       - ./openclaw-workspace:/home/node/.openclaw/workspace
+      - openclaw-homebrew:/home/node/.linuxbrew
+      - ./brew-init.sh:/scripts/brew-init.sh:ro
 
     cap_drop:
       - ALL
@@ -140,3 +146,13 @@ networks:
   # between n8n workflows and the OpenClaw gateway.
   n8n-net:
     external: true
+
+# =============================================================================
+# Volumes
+# =============================================================================
+volumes:
+  # Persistent Linuxbrew installation — survives Watchtower image updates.
+  # Mounted at /home/node/.linuxbrew, which is one of the paths that
+  # OpenClaw's resolveBrewExecutable() checks automatically (no env vars needed).
+  openclaw-homebrew:
+    driver: local

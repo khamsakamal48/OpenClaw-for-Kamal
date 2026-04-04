@@ -22,13 +22,6 @@ services:
 
     env_file: .env
 
-    environment:
-      # Required when --bind lan is used (non-loopback). OpenClaw enforces
-      # explicit origin allowlisting to protect the Control UI from CSRF.
-      # Set to your actual domain. Nginx is the only external entry point so
-      # this acts as a second layer of origin validation behind TLS.
-      - OPENCLAW_GATEWAY_CONTROL_UI_ALLOWED_ORIGINS=https://openclaw.k-ai.in
-
     # Bind to localhost ONLY — Nginx handles external TLS termination.
     # Docker bypasses iptables when binding to 0.0.0.0, so this is critical.
     ports:

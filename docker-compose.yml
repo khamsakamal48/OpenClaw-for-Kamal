@@ -29,7 +29,7 @@ services:
     volumes:
       - ./openclaw-config:/home/node/.openclaw
       - ./openclaw-workspace:/home/node/.openclaw/workspace
-      - openclaw-homebrew:/home/node/.linuxbrew
+      - ./openclaw-homebrew:/home/node/.linuxbrew
       - ./brew-init.sh:/scripts/brew-init.sh:ro
 
     # NOTE: read_only: true is intentionally omitted. Node.js and the openclaw
@@ -105,7 +105,7 @@ services:
     volumes:
       - ./openclaw-config:/home/node/.openclaw
       - ./openclaw-workspace:/home/node/.openclaw/workspace
-      - openclaw-homebrew:/home/node/.linuxbrew
+      - ./openclaw-homebrew:/home/node/.linuxbrew
       - ./brew-init.sh:/scripts/brew-init.sh:ro
 
     cap_drop:
@@ -147,12 +147,3 @@ networks:
   n8n-net:
     external: true
 
-# =============================================================================
-# Volumes
-# =============================================================================
-volumes:
-  # Persistent Linuxbrew installation — survives Watchtower image updates.
-  # Mounted at /home/node/.linuxbrew, which is one of the paths that
-  # OpenClaw's resolveBrewExecutable() checks automatically (no env vars needed).
-  openclaw-homebrew:
-    driver: local

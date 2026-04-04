@@ -12,9 +12,9 @@ echo "==> OpenClaw setup"
 
 # ---- 1. Create data directories with correct ownership (uid 1000 = node) ---
 echo "  Creating data directories..."
-mkdir -p openclaw-config openclaw-workspace
-sudo chown 1000:1000 openclaw-config openclaw-workspace
-echo "  Done: openclaw-config/ and openclaw-workspace/ (owned by uid 1000)"
+mkdir -p openclaw-config openclaw-workspace openclaw-homebrew
+sudo chown 1000:1000 openclaw-config openclaw-workspace openclaw-homebrew
+echo "  Done: openclaw-config/, openclaw-workspace/, openclaw-homebrew/ (owned by uid 1000)"
 
 # ---- 2. Create openclaw.json config file ------------------------------------
 # OpenClaw reads its config from ~/.openclaw/openclaw.json (JSON5 format).

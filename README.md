@@ -182,12 +182,15 @@ Total VPS: 3 OCPU / 24 GB RAM / 20 GB disk (Oracle Cloud ARM64 free tier).
 ## Troubleshooting
 
 **502 Bad Gateway / `curl: (56) Recv failure: Connection reset by peer`**
-The OpenClaw gateway binds to `127.0.0.1` (its own loopback) by default. Docker's
-port publishing forwards traffic from the host's `eth0` to the container's `eth0` —
-it cannot reach a process only listening on the container's internal loopback. The
-health check still shows `(healthy)` because it runs *inside* the container where
-`localhost:18789` works. Fix: pass `--host 0.0.0.0` in the gateway command so it
-listens on all interfaces. This is already set in `docker-compose.yml`.
+The OpenClaw gateway defaults to `loopback` bind mode — it only listens on
+`127.0.0.1` *inside the container*. Docker's port publishing forwards traffic via
+the container's `eth0` adapter, which the gateway won't accept in loopback mode.
+The health check still shows `(healthy)` because it runs *inside* the container
+where `localhost:18789` is reachable. Fix: pass `--bind lan` in the gateway
+command (or set `OPENCLAW_GATEWAY_BIND=lan` in `.env`) so it listens on
+`0.0.0.0` inside the container. This is already configured in `docker-compose.yml`.
+Note: `--bind` only accepts named modes (`loopback`, `lan`, `tailnet`, `auto`,
+`custom`) — raw IPs like `0.0.0.0` are rejected.
 
 **certbot fails with "cannot load certificate" error**
 This happens when you copy an nginx config that already has `ssl_certificate` lines before the cert exists. The included `nginx-openclaw.conf` is HTTP-only on purpose — never pre-add SSL paths. Deploy the HTTP config first, then run `certbot --nginx` and it will add the HTTPS block automatically.

@@ -73,6 +73,9 @@ services:
         max-size: "10m"
         max-file: "3"
 
+    labels:
+      - com.centurylinklabs.watchtower.enable=true
+
   # ---------------------------------------------------------------------------
   # CLI — on-demand interactive tool (only starts when explicitly invoked)
   # Usage: docker compose --profile cli run --rm openclaw-cli <command>
@@ -124,6 +127,9 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+    labels:
+      - com.centurylinklabs.watchtower.enable=true
 
 # =============================================================================
 # Networks

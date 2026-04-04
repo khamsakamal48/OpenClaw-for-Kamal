@@ -12,12 +12,9 @@ services:
     image: ${OPENCLAW_IMAGE:-ghcr.io/openclaw/openclaw:latest}
     container_name: openclaw-gateway
     user: "1000:1000"
-    # --bind lan makes the gateway listen on 0.0.0.0 inside the container so
-    # Docker's port publishing can forward traffic from the host. The default
-    # "loopback" mode binds to 127.0.0.1 (container-internal only) which causes
-    # 502 errors and "Connection reset by peer" from outside the container.
-    # Note: --bind accepts named modes only (loopback/lan/tailnet/auto/custom).
-    command: ["node", "openclaw.mjs", "gateway", "--allow-unconfigured", "--bind", "lan"]
+    # bind: lan and controlUi.allowedOrigins are set in openclaw.json (config file).
+    # The config file is mounted via the openclaw-config volume.
+    command: ["node", "openclaw.mjs", "gateway", "--allow-unconfigured"]
     restart: unless-stopped
 
     env_file: .env

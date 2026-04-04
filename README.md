@@ -153,7 +153,6 @@ docker network connect n8n-net <your-n8n-container-name>
 This deployment includes the following hardening:
 
 - **Non-root execution** — runs as uid 1000 (node user)
-- **Read-only filesystem** — container root is immutable; only `/tmp` and data volumes are writable
 - **All capabilities dropped** — `cap_drop: ALL`
 - **No privilege escalation** — `no-new-privileges: true`
 - **Localhost-only ports** — bound to `127.0.0.1`; Nginx handles external access with TLS

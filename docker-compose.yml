@@ -22,6 +22,13 @@ services:
 
     env_file: .env
 
+    environment:
+      # Required when --bind lan is used (non-loopback). OpenClaw enforces
+      # explicit origin allowlisting to protect the Control UI from CSRF.
+      # Set to your actual domain. Nginx is the only external entry point so
+      # this acts as a second layer of origin validation behind TLS.
+      - OPENCLAW_GATEWAY_CONTROL_UI_ALLOWED_ORIGINS=https://openclaw.k-ai.in
+
     # Bind to localhost ONLY — Nginx handles external TLS termination.
     # Docker bypasses iptables when binding to 0.0.0.0, so this is critical.
     ports:
@@ -32,11 +39,11 @@ services:
       - ./openclaw-config:/home/node/.openclaw
       - ./openclaw-workspace:/home/node/.openclaw/workspace
 
-    # Harden the filesystem
-    read_only: true
-    tmpfs:
-      - /tmp:size=512M
-      - /home/node/.npm:size=128M
+    # NOTE: read_only: true is intentionally omitted. Node.js and the openclaw
+    # entrypoint need writable access to several paths (/home/node, /tmp, npm
+    # cache, V8 code cache, etc.) that are hard to enumerate upfront. The other
+    # hardening layers (non-root user, cap_drop: ALL, no-new-privileges) still
+    # provide strong isolation without risking a silent startup failure.
 
     # Security: drop everything, prevent privilege escalation
     cap_drop:
@@ -104,11 +111,6 @@ services:
     volumes:
       - ./openclaw-config:/home/node/.openclaw
       - ./openclaw-workspace:/home/node/.openclaw/workspace
-
-    read_only: true
-    tmpfs:
-      - /tmp:size=256M
-      - /home/node/.npm:size=64M
 
     cap_drop:
       - ALL

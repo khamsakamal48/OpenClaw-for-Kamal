@@ -8,6 +8,7 @@ Production-ready Docker deployment for [OpenClaw](https://github.com/openclaw/op
 - Nginx installed and running
 - n8n already running in Docker on the `n8n-net` network
 - Domain `openclaw.k-ai.in` with DNS pointing to the VPS
+- certbot + python3-certbot-nginx installed (see OS-specific commands below)
 - (Optional) OpenRouter API key from [openrouter.ai/keys](https://openrouter.ai/keys)
 
 ## Quick Start
@@ -26,13 +27,42 @@ chmod +x setup.sh
 
 # 4. Edit .env with your configuration
 nano .env
+```
 
-# 5. Set up Nginx
-sudo cp nginx-openclaw.conf /etc/nginx/sites-available/openclaw.conf
-sudo ln -s /etc/nginx/sites-available/openclaw.conf /etc/nginx/sites-enabled/
-sudo certbot --nginx -d openclaw.k-ai.in
+### Step 5 — Set Up Nginx (OS-specific)
+
+**Rocky Linux / RHEL / AlmaLinux / Fedora / CentOS:**
+```bash
+# Install certbot (if not already installed)
+sudo dnf install certbot python3-certbot-nginx
+
+# Deploy config — uses conf.d/ (no sites-available on RHEL-based systems)
+sudo cp nginx-openclaw.conf /etc/nginx/conf.d/openclaw.conf
 sudo nginx -t && sudo systemctl reload nginx
 
+# Issue TLS certificate and let certbot auto-configure Nginx
+sudo certbot --nginx -d openclaw.k-ai.in
+```
+
+**Ubuntu / Debian:**
+```bash
+# Install certbot (if not already installed)
+sudo apt install certbot python3-certbot-nginx
+
+# Deploy config — uses sites-available/sites-enabled pattern
+sudo cp nginx-openclaw.conf /etc/nginx/sites-available/openclaw.conf
+sudo ln -s /etc/nginx/sites-available/openclaw.conf /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+
+# Issue TLS certificate and let certbot auto-configure Nginx
+sudo certbot --nginx -d openclaw.k-ai.in
+```
+
+> **Important:** Deploy the config and reload Nginx **before** running certbot.
+> The config ships as HTTP-only on purpose — certbot automatically adds the
+> HTTPS server block and the HTTP→HTTPS redirect when it runs.
+
+```bash
 # 6. Start OpenClaw
 docker compose up -d openclaw-gateway
 
@@ -150,6 +180,18 @@ docker compose --profile cli run --rm openclaw-cli openclaw doctor
 Total VPS: 3 OCPU / 24 GB RAM / 20 GB disk (Oracle Cloud ARM64 free tier).
 
 ## Troubleshooting
+
+**certbot fails with "cannot load certificate" error**
+This happens when you copy an nginx config that already has `ssl_certificate` lines before the cert exists. The included `nginx-openclaw.conf` is HTTP-only on purpose — never pre-add SSL paths. Deploy the HTTP config first, then run `certbot --nginx` and it will add the HTTPS block automatically.
+
+**nginx -t fails after copying config**
+```bash
+# Check which config is causing the issue
+sudo nginx -T 2>&1 | grep -i error
+
+# Validate the specific file
+sudo nginx -c /etc/nginx/nginx.conf -t
+```
 
 **Container won't start (read-only filesystem error)**
 Some Node.js operations may need additional writable paths. Add a tmpfs mount:

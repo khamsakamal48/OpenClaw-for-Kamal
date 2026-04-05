@@ -47,6 +47,19 @@ JSONEOF
   echo "  Done."
 fi
 
+# ---- 2b. Create empty crontab file for supercronic -------------------------
+# brew-init.sh starts supercronic if this file exists AND is non-empty.
+# Add scheduled jobs here using standard 5-field cron syntax, e.g.:
+#   0 * * * *  python3 /home/node/.openclaw/workspace/my-script.py
+CRONTAB="openclaw-config/crontab"
+if [ ! -f "${CRONTAB}" ]; then
+  touch "${CRONTAB}"
+  sudo chown 1000:1000 "${CRONTAB}"
+  echo "  Created: ${CRONTAB} (add cron jobs here using standard crontab syntax)"
+else
+  echo "  ${CRONTAB} already exists — skipping."
+fi
+
 # ---- 3. Create the shared Docker network if it doesn't exist ----------------
 if docker network inspect n8n-net >/dev/null 2>&1; then
   echo "  Docker network 'n8n-net' already exists — skipping."

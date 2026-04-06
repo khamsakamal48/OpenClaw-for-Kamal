@@ -40,9 +40,14 @@ fi
 # ---- 4. Install supercronic (rootless cron for containers) if not present --
 # supercronic reads a standard crontab file and runs jobs as the current user
 # without requiring a cron daemon or root privileges.
+# Not available via Homebrew — download the static binary from GitHub releases.
 if ! command -v supercronic &>/dev/null; then
     echo "[brew-init] Installing supercronic ..."
-    brew install supercronic
+    SUPERCRONIC_VERSION="v0.2.33"
+    SUPERCRONIC_ARCH="linux-arm64"
+    SUPERCRONIC_URL="https://github.com/aptible/supercronic/releases/download/${SUPERCRONIC_VERSION}/supercronic-${SUPERCRONIC_ARCH}"
+    curl -fsSL "${SUPERCRONIC_URL}" -o "${BREW_PREFIX}/bin/supercronic"
+    chmod +x "${BREW_PREFIX}/bin/supercronic"
 else
     echo "[brew-init] supercronic already available."
 fi
